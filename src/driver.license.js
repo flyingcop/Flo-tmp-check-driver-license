@@ -21,6 +21,20 @@ class DriverLicense {
     }
 
     _setOptions(opts) {
+        if ( opts.licenLocal == undefined
+            || opts.sName == undefined
+            || opts.sJumin1 == undefined
+            || opts.licence01 == undefined
+            || opts.licence02 == undefined
+            || opts.licence03 == undefined
+            || opts.licence04 == undefined
+            || opts.serialNum == undefined ) {
+
+            let error = new Error('Invalid parameters');
+            error.code = 400;
+            throw error;
+        }
+
         return {
             uri : this.uri,
             method : "POST",

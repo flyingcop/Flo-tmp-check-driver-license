@@ -14,9 +14,6 @@ test('test class', async ()=> {
         "sName": '김동환',
         "sJumin1": '791121',
         "licence01": '19',
-        "licence02": '01',
-        "licence03": '00476',
-        "licence04": '32',
         "serialNum": 'X67UK'
     };
 
@@ -25,7 +22,7 @@ test('test class', async ()=> {
         console.log(result);
     }
     catch (e) {
-       console.log(e);
+       console.log({'statusCode':e.code || 500, body: e.message});
     }
     expect(0).toBe(0);
 });

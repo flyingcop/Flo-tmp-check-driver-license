@@ -10,19 +10,30 @@ function makeResponse (result) {
 
     if (result.state != 'ok') {
         res.statusCode = 400;
+        res.body = JSON.stringify({msg: result.msg});
     }
-
-    res.body = result.msg;
+    else {
+        res.body = JSON.stringify({msg: result.msg});
+    }
 
     return res;
 }
 
+/**
+ * Content-type : application/json
+ * @param event
+ * @returns {Promise<*>}
+ */
 module.exports.checkDriverLicense = async (event) => {
   try {
-      let result = await new DriverLicense().set(event).check();
-      return makeResponse(200, result);
+      let data = JSON.parse(event.body);
+      console.log(data);
+      let result = await new DriverLicense().set(data).check();
+      console.log(result);
+      return makeResponse(result);
   }
   catch (e) {
-     return {'statusCode':500, body: e.message};
+     console.error(e);
+     return {'statusCode':e.code || 500, body: JSON.stringify({msg: e.message})};
   }
 };
