@@ -9,11 +9,10 @@ function makeResponse (result) {
     };
 
     if (result.state != 'ok') {
-        res.statusCode = 400;
-        res.body = JSON.stringify({msg: result.msg});
+        res.body = JSON.stringify({errorCode: 1, message: result.msg});
     }
     else {
-        res.body = JSON.stringify({msg: result.msg});
+        res.body = JSON.stringify({errorCode: 0, message: result.msg});
     }
 
     return res;
@@ -34,6 +33,6 @@ module.exports.checkDriverLicense = async (event) => {
   }
   catch (e) {
      console.error(e);
-     return {'statusCode':e.code || 500, body: JSON.stringify({msg: e.message})};
+     return {'statusCode':e.code || 500, body: JSON.stringify({errorCode: 1, message: e.message})};
   }
 };
