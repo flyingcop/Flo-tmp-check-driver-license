@@ -19,7 +19,7 @@ service: flo-check-driver-license # NOTE: update this with your service name
 
 provider:
   name: aws
-  runtime: nodejs8.10
+  runtime: nodejs20.x
   region: ap-northeast-2
   memorySize: 512
   timeout: 20
