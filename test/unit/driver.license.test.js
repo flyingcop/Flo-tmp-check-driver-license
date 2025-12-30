@@ -5,6 +5,12 @@ jest.mock('request-promise-native', () => jest.fn());
 const request = require('request-promise-native');
 const DriverLicense = require('../../src/driver.license');
 
+const RIMS_BASE_URL = 'https://rims.test';
+const ORIGINAL_ENV = {
+    RIMS_API_BASE: process.env.RIMS_API_BASE,
+    DRIVER_LICENSE_PROVIDER: process.env.DRIVER_LICENSE_PROVIDER
+};
+
 function createValidData(overrides) {
     return Object.assign({
         licenLocal: '19',
@@ -28,6 +34,11 @@ function createHtml(listItems) {
 }
 
 describe('DriverLicense _setOptions validation', () => {
+    beforeEach(() => {
+        process.env.RIMS_API_BASE = RIMS_BASE_URL;
+        process.env.DRIVER_LICENSE_PROVIDER = 'rims';
+    });
+
     test('returns options for valid data', () => {
         const driverLicense = new DriverLicense();
         const data = createValidData();
@@ -35,6 +46,24 @@ describe('DriverLicense _setOptions validation', () => {
         const options = driverLicense._setOptions(data);
 
         expect(options).toBeDefined();
+        expect(options.method).toBe('POST');
+        expect(options.uri).toBe(`${RIMS_BASE_URL}/rims/verifyPmDriverSingle`);
+        expect(options.body).toMatchObject({
+            license_no: '1919010047632',
+            name: data.sName,
+            birth: data.sJumin1,
+            seq_no: data.serialNum
+        });
+        expect(options.json).toBe(true);
+        expect(options.resolveWithFullResponse).toBe(true);
+    });
+
+    test('returns scrape options when provider is scrape', () => {
+        const driverLicense = new DriverLicense();
+        const data = createValidData({ provider: 'scrape' });
+
+        const options = driverLicense._setOptions('scrape', data);
+
         expect(options.method).toBe('POST');
         expect(options.uri).toContain('safedriving.or.kr');
         expect(options.form).toMatchObject({
@@ -70,7 +99,87 @@ describe('DriverLicense _setOptions validation', () => {
     });
 });
 
-describe('DriverLicense _parseResult', () => {
+describe('DriverLicense _parseRimsResult', () => {
+    beforeEach(() => {
+        process.env.RIMS_API_BASE = RIMS_BASE_URL;
+        process.env.DRIVER_LICENSE_PROVIDER = 'rims';
+    });
+
+    test('returns ok when API says eligible', () => {
+        const response = {
+            statusCode: 200,
+            body: {
+                isEligible: true,
+                resultCode: '00',
+                maskedLicenseNo: '1*1*0*4*6*2'
+            }
+        };
+        const driverLicense = new DriverLicense();
+
+        const result = driverLicense._parseResult(response);
+
+        expect(result).toEqual({
+            state: 'ok',
+            msg: 'Driver license verified',
+            resultCode: '00',
+            maskedLicenseNo: '1*1*0*4*6*2'
+        });
+    });
+
+    test('returns error when API marks not eligible', () => {
+        const response = {
+            statusCode: 200,
+            body: {
+                isEligible: false,
+                resultCode: '01'
+            }
+        };
+        const driverLicense = new DriverLicense();
+
+        const result = driverLicense._parseResult(response);
+
+        expect(result.state).toBe('error');
+        expect(result.resultCode).toBe('01');
+        expect(result.msg).toBe('Driver license not eligible');
+    });
+
+    test('returns error when API responds with errorCode', () => {
+        const response = {
+            statusCode: 200,
+            body: {
+                errorCode: 500,
+                message: 'internal error'
+            }
+        };
+        const driverLicense = new DriverLicense();
+
+        const result = driverLicense._parseResult(response);
+
+        expect(result.state).toBe('error');
+        expect(result.msg).toBe('internal error');
+        expect(result.errorCode).toBe(500);
+    });
+
+    test('returns error when HTTP status is not 200', () => {
+        const response = {
+            statusCode: 502,
+            body: { message: 'Bad gateway' }
+        };
+        const driverLicense = new DriverLicense();
+
+        const result = driverLicense._parseResult(response);
+
+        expect(result.state).toBe('error');
+        expect(result.msg).toBe('Bad gateway');
+    });
+});
+
+describe('DriverLicense _parseScrapeResult', () => {
+    beforeEach(() => {
+        process.env.RIMS_API_BASE = RIMS_BASE_URL;
+        delete process.env.DRIVER_LICENSE_PROVIDER;
+    });
+
     test('returns ok when both messages have no style', () => {
         const html = createHtml([
             { text: '암호일련번호가 일치합니다.' },
@@ -78,7 +187,7 @@ describe('DriverLicense _parseResult', () => {
         ]);
         const driverLicense = new DriverLicense();
 
-        const result = driverLicense._parseResult(html);
+        const result = driverLicense._parseScrapeResult(html);
 
         expect(result).toEqual({
             state: 'ok',
@@ -93,7 +202,7 @@ describe('DriverLicense _parseResult', () => {
         ]);
         const driverLicense = new DriverLicense();
 
-        const result = driverLicense._parseResult(html);
+        const result = driverLicense._parseScrapeResult(html);
 
         expect(result).toEqual({
             state: 'error',
@@ -108,39 +217,32 @@ describe('DriverLicense _parseResult', () => {
         ]);
         const driverLicense = new DriverLicense();
 
-        const result = driverLicense._parseResult(html);
+        const result = driverLicense._parseScrapeResult(html);
 
         expect(result).toEqual({
             state: 'error',
             msg: '도로교통공단 전산 자료와 일치하지 않습니다.'
         });
     });
-
-    test('returns unknown error when style exists but messages are empty', () => {
-        const html = createHtml([
-            { style: 'color:red;' },
-            { }
-        ]);
-        const driverLicense = new DriverLicense();
-
-        const result = driverLicense._parseResult(html);
-
-        expect(result.state).toBe('error');
-        expect(result.msg).toBe('unknown error');
-    });
 });
 
 describe('DriverLicense.check', () => {
     beforeEach(() => {
+        process.env.RIMS_API_BASE = RIMS_BASE_URL;
+        process.env.DRIVER_LICENSE_PROVIDER = 'rims';
         request.mockReset();
     });
 
-    test('resolves ok when remote HTML indicates success', async () => {
-        const html = createHtml([
-            { text: '암호일련번호가 일치합니다.' },
-            { text: '도로교통공단 전산 자료와 일치합니다.' }
-        ]);
-        request.mockResolvedValueOnce(html);
+    test('resolves ok when remote API returns eligible', async () => {
+        const response = {
+            statusCode: 200,
+            body: {
+                isEligible: true,
+                resultCode: '00',
+                maskedLicenseNo: '1*1*0*4*6*2'
+            }
+        };
+        request.mockResolvedValueOnce(response);
 
         const driverLicense = new DriverLicense();
         const data = createValidData();
@@ -150,20 +252,22 @@ describe('DriverLicense.check', () => {
         expect(request).toHaveBeenCalledTimes(1);
         expect(request).toHaveBeenCalledWith(expect.objectContaining({
             method: 'POST',
-            uri: expect.stringContaining('safedriving.or.kr')
+            uri: `${RIMS_BASE_URL}/rims/verifyPmDriverSingle`
         }));
         expect(result).toEqual({
             state: 'ok',
-            msg: '도로교통공단 전산 자료와 일치합니다.'
+            msg: 'Driver license verified',
+            resultCode: '00',
+            maskedLicenseNo: '1*1*0*4*6*2'
         });
     });
 
-    test('resolves error when remote HTML indicates validation error', async () => {
-        const html = createHtml([
-            { style: 'color:red;', text: '암호일련번호가 일치하지 않습니다.' },
-            { text: '도로교통공단 전산 자료와 일치합니다.' }
-        ]);
-        request.mockResolvedValueOnce(html);
+    test('resolves error when remote API returns non-200', async () => {
+        const response = {
+            statusCode: 500,
+            body: { message: 'fail' }
+        };
+        request.mockResolvedValueOnce(response);
 
         const driverLicense = new DriverLicense();
         const data = createValidData();
@@ -172,6 +276,31 @@ describe('DriverLicense.check', () => {
 
         expect(request).toHaveBeenCalledTimes(1);
         expect(result.state).toBe('error');
-        expect(result.msg).toBe('암호일련번호가 일치하지 않습니다.');
+        expect(result.msg).toBe('fail');
     });
+
+    test('uses scraping provider when requested', async () => {
+        const html = createHtml([
+            { text: '암호일련번호가 일치합니다.' },
+            { text: '도로교통공단 전산 자료와 일치합니다.' }
+        ]);
+        request.mockResolvedValueOnce(html);
+
+        const driverLicense = new DriverLicense();
+        const data = createValidData({ provider: 'scrape' });
+
+        const result = await driverLicense.set(data).check();
+
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledWith(expect.objectContaining({
+            uri: expect.stringContaining('safedriving.or.kr')
+        }));
+        expect(result.state).toBe('ok');
+        expect(result.msg).toBe('도로교통공단 전산 자료와 일치합니다.');
+    });
+});
+
+afterAll(() => {
+    process.env.RIMS_API_BASE = ORIGINAL_ENV.RIMS_API_BASE;
+    process.env.DRIVER_LICENSE_PROVIDER = ORIGINAL_ENV.DRIVER_LICENSE_PROVIDER;
 });
