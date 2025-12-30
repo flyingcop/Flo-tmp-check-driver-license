@@ -13,13 +13,15 @@
 
 service: flo-check-driver-license # NOTE: update this with your service name
 
+useDotenv: true
+
 # You can pin your service to only deploy with a specific Serverless version
 # Check out our docs for more details
 # frameworkVersion: "=X.X.X"
 
 provider:
   name: aws
-  runtime: nodejs8.10
+  runtime: nodejs20.x
   region: ap-northeast-2
   memorySize: 512
   timeout: 20
@@ -65,6 +67,10 @@ functions:
           path: user/driverlicense
           method: post
           cors: true
+    environment:
+      RIMS_API_BASE: ${env:RIMS_API_BASE}
+      DRIVER_LICENSE_PROVIDER: rims 
+      RIMS_TIMEOUT_MS: 15000
 
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
